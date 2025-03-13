@@ -1,0 +1,78 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["fastapi", "run", "ocr_service/main.py", "--port", "8000", "--reload"]
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /app
+          ignore:
+            - .venv/
+        - action: rebuild
+          path: ./pyproject.toml
+    environment:
+      POSTGRES_DB_HOST: ${POSTGRES_DB_HOST}
+      POSTGRES_DB_USER: ${POSTGRES_DB_USER}
+      POSTGRES_DB_PASSWORD: ${POSTGRES_DB_PASSWORD}
+      POSTGRES_DB_NAME: ${POSTGRES_DB_NAME}
+      TASK_QUEUE_CONCURRENCY: ${TASK_QUEUE_CONCURRENCY}
+      TASK_QUEUE_LIMITER_LIMIT: ${TASK_QUEUE_LIMITER_LIMIT}
+      TASK_QUEUE_LIMITER_PERIOD: ${TASK_QUEUE_LIMITER_PERIOD}
+      DB_POOL_SIZE: ${DB_POOL_SIZE}
+      DB_POOL_MAX_OVERFLOW: ${DB_POOL_MAX_OVERFLOW}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE}
+      LITELLM_MODEL: ${LITELLM_MODEL}
+      GOOGLE_APPLICATION_CREDENTIALS: "/app/data/service_account.json"
+      REDIS_URL: ${REDIS_URL}
+      RATE_LIMIT_SUBMIT_WORKFLOW: ${RATE_LIMIT_SUBMIT_WORKFLOW}
+      RATE_LIMIT_DEFAULT: ${RATE_LIMIT_DEFAULT}
+      SERVICE_TYPE: ${SERVICE_TYPE}
+      DISABLE_API_DOCS: "false"
+    volumes:
+      - ".:/app"
+      - "./data/service_account.json:/app/data/service_account.json"
+      - "/app/.venv"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_DB_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB_NAME}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pg_isready -d ${POSTGRES_DB_NAME} -U ${POSTGRES_DB_USER}"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+#    ports:
+#      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 30s
+      retries: 50
+      start_period: 30s
+    restart: always
